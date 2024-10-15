@@ -109,4 +109,6 @@ class Encoder(nn.Module):
         out = self.dropout(concat_word_position)
 
         for layer in self.layers:
-            out = layer()
+            out = layer(out, out, out, mask)
+        # in Encoder layer(V, K, Q, mask)
+        return out
