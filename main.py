@@ -21,12 +21,16 @@ class SelfAttention(nn.Module):
         N = query.shape[0] #how many examples are sent in a single instance of time
         value_len, key_len, query_len =  values.shape[1], keys.shape[1], query.shape[1]
 
+        values = self.values(values)  # (N, value_len, embed_size)
+        keys = self.keys(keys)  # (N, key_len, embed_size)
+        queries = self.queries(query)  # (N, query_len, embed_size)
+
         # split embedding into self.heads pieces
         values = values.reshape(N, value_len, self.heads, self.head_dim)
         keys = keys.reshape(N,key_len, self.heads, self.head_dim)
-        queries = query.reshape(N, key_len, self.heads, self.head_dim)
+        queries = queries.reshape(N, query_len, self.heads, self.head_dim)
 
-        energy = torch.einsum("nqhd, nkhd-->nhqk", [queries, keys])
+        energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
         # queries shape: (N, query_len, heads, heads_dim)
         # keys shape: (N, key_len, head, heads_dim)
         # energy shape: (N, heads, query_len, key_len)
@@ -36,7 +40,7 @@ class SelfAttention(nn.Module):
 
         attention = torch.softmax(energy / (self.embed_size ** (1/2)) , dim=3)
 
-        out = torch.einsum("nhql,nlhd-->nqhd", [attention, values]).reshape(
+        out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
             N, query_len, self.heads*self.head_dim
         )
         # attention shape: (N, heads, query_len, key_len)
@@ -157,7 +161,7 @@ class Decoder(nn.Module):
 
     def forward(self, x, enc_out, src_mask, target_mask):
         N, seq_length = x.shape
-        positions = torch.range(0, seq_length).expand(N, seq_length).to(self.device)
+        positions = torch.arange(0, seq_length).expand(N, seq_length).to(self.device)
         concat_word_positions = self.word_embedding(x) + self.position_embedding(positions)
         x = self.dropout(concat_word_positions)
 
@@ -166,7 +170,7 @@ class Decoder(nn.Module):
 
         out = self.fc_out(x)
 
-class Tranformer(nn.Module):
+class Transformer(nn.Module):
     def __init__(self,
                  src_vocab_size,
                  target_vocab_size,
@@ -180,7 +184,7 @@ class Tranformer(nn.Module):
                  device="cpu",
                  max_length = 100
     ):
-        super(Tranformer, self).__init__()
+        super(Transformer, self).__init__()
 
         self.encoder = Encoder(
             src_vocab_size,
@@ -227,3 +231,22 @@ class Tranformer(nn.Module):
         enc_src = self.encoder(src, src_mask)
         out = self.decoder(target, enc_src, src_mask, target_mask)
         return out
+
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
+
+    x = torch.tensor([[1, 5, 6, 4, 3, 9, 5, 2, 0], [1, 8, 7, 3, 4, 5, 6, 7, 2]]).to(
+        device
+    )
+    trg = torch.tensor([[1, 7, 4, 3, 5, 9, 2, 0], [1, 5, 6, 2, 4, 7, 6, 2]]).to(device)
+
+    src_pad_idx = 0
+    trg_pad_idx = 0
+    src_vocab_size = 10
+    trg_vocab_size = 10
+    model = Transformer(src_vocab_size, trg_vocab_size, src_pad_idx, trg_pad_idx, device=device).to(
+        device
+    )
+    out = model(x, trg[:, :-1])
+    print(out.shape)
