@@ -34,3 +34,20 @@ class SelfAttention(nn.Module):
         if mask is not None:
             energy = energy.masked_fill(mask == 0, float("-1e20")) #setting value approach -ve inf
 
+        attention = torch.softmax(energy / (self.embed_size ** (1/2)) , dim=3)
+
+        out = torch.einsum("nhql,nlhd-->nqhd", [attention, values]).reshape(
+            N, query_len, self.heads*self.head_dim
+        )
+        # attention shape: (N, heads, query_len, key_len)
+        # values shape: (N, value_len, heads, heads_dim)
+        # after einsum (N, query_len, heads, head_dim) then flatten last two dimension
+
+        out = self.fc_out(out)
+        return out
+
+class TransformerBlock(nn.Module):
+    def __init__(self, embed_size, heads, dropout, forward_expansion):
+        super(TransformerBlock, self).__init__()
+        self.attention = SelfAttention(embed_size, heads)
+        self.norm1 = nn.LayerNorm(embed_size)
